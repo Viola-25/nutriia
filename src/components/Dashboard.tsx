@@ -116,7 +116,7 @@ function ProgressBar({
   );
 }
 
-const AI_TIMEOUT = 15000;
+const AI_TIMEOUT = 25000;
 
 const MACRO_PLACEHOLDERS = {
   calorie: "Ex: 450",
@@ -153,7 +153,8 @@ export default function Dashboard() {
   const [analyzing, setAnalyzing] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [timeoutError, setTimeoutError] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
+  const [manualMode, setManualMode] = useState<"off" | "ai" | "full">("off");
+  const [manualText, setManualText] = useState("");
   const [manualForm, setManualForm] = useState({
     items: "",
     calories: "",
@@ -254,7 +255,7 @@ export default function Dashboard() {
     if (!file) return;
     setAnalyzing(true);
     setTimeoutError(false);
-    setManualMode(false);
+    setManualMode("off");
     setPreview(null);
 
     try {
@@ -263,11 +264,7 @@ export default function Dashboard() {
       await postWithTimeout("/api/analyze-meal", { image: base64 });
       await fetchData();
     } catch (err: unknown) {
-      if (axios.isCancel(err) || (err instanceof DOMException && err.name === "AbortError")) {
-        setTimeoutError(true);
-      } else {
-        setTimeoutError(true);
-      }
+      setTimeoutError(true);
     } finally {
       setAnalyzing(false);
       setPreview(null);
@@ -279,7 +276,7 @@ export default function Dashboard() {
     if (!textInput.trim()) return;
     setAnalyzing(true);
     setTimeoutError(false);
-    setManualMode(false);
+    setManualMode("off");
     try {
       await postWithTimeout("/api/analyze-text", { description: textInput.trim() });
       setTextInput("");
@@ -290,6 +287,23 @@ export default function Dashboard() {
       } else {
         setTimeoutError(true);
       }
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handleManualTextSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!manualText.trim()) return;
+    setAnalyzing(true);
+    setTimeoutError(false);
+    try {
+      await postWithTimeout("/api/analyze-text", { description: manualText.trim() });
+      setManualText("");
+      setManualMode("off");
+      await fetchData();
+    } catch (err: unknown) {
+      setManualMode("full");
     } finally {
       setAnalyzing(false);
     }
@@ -308,7 +322,7 @@ export default function Dashboard() {
         fat: Number(manualForm.fat) || 0,
       });
       setManualForm({ items: "", calories: "", protein: "", carbs: "", fat: "" });
-      setManualMode(false);
+      setManualMode("off");
       setTimeoutError(false);
       await fetchData();
     } catch (err) {
@@ -389,7 +403,7 @@ export default function Dashboard() {
         <div className="border-b border-gray-100">
           <div className="flex">
             <button
-              onClick={() => { setEntryTab("photo"); setTimeoutError(false); setManualMode(false); }}
+              onClick={() => { setEntryTab("photo"); setTimeoutError(false); setManualMode("off"); }}
               className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
                 entryTab === "photo"
                   ? "border-b-2 border-emerald-500 text-emerald-700"
@@ -399,7 +413,7 @@ export default function Dashboard() {
               📷 Foto
             </button>
             <button
-              onClick={() => { setEntryTab("text"); setTimeoutError(false); setManualMode(false); }}
+              onClick={() => { setEntryTab("text"); setTimeoutError(false); setManualMode("off"); }}
               className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
                 entryTab === "text"
                   ? "border-b-2 border-emerald-500 text-emerald-700"
@@ -417,16 +431,16 @@ export default function Dashboard() {
               <span className="text-xl">⏰</span>
               <div className="flex-1">
                 <p className="font-medium text-amber-800">A IA demorou muito para responder</p>
-                <p className="mt-1 text-sm text-amber-700">
-                  Você pode tentar novamente ou inserir os dados manualmente.
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => { setTimeoutError(false); setManualMode(true); }}
-                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
-                  >
-                    Inserir Manualmente
-                  </button>
+                  <p className="mt-1 text-sm text-amber-700">
+                    Você pode descrever a refeição para a IA interpretar ou tentar novamente.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => { setTimeoutError(false); setManualMode("ai"); }}
+                      className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+                    >
+                      Descrever Refeição
+                    </button>
                   <button
                     onClick={() => { setTimeoutError(false); fileRef.current?.click(); }}
                     className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100"
@@ -439,7 +453,43 @@ export default function Dashboard() {
           </div>
         )}
 
-        {manualMode ? (
+        {manualMode === "ai" ? (
+          <form onSubmit={handleManualTextSubmit} className="animate-fade-in space-y-4 p-4">
+            <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
+              A IA demorou muito. Descreva a refeição abaixo que eu tento interpretar:
+            </div>
+            <textarea
+              value={manualText}
+              onChange={(e) => setManualText(e.target.value)}
+              placeholder="Ex: 2 ovos mexidos, 40g de aveia com leite, 1 banana"
+              rows={3}
+              className="w-full resize-none rounded-lg border border-gray-300 p-3 text-sm outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            />
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={analyzing || !manualText.trim()}
+                className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {analyzing ? "Analisando..." : "Analisar com IA"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setManualMode("full")}
+                className="text-sm text-gray-500 underline hover:text-gray-700"
+              >
+                Inserir valores manualmente
+              </button>
+              <button
+                type="button"
+                onClick={() => { setManualMode("off"); setTimeoutError(false); }}
+                className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : manualMode === "full" ? (
           <form onSubmit={handleManualSubmit} className="animate-fade-in space-y-4 p-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Descrição da Refeição</label>
@@ -508,7 +558,7 @@ export default function Dashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => { setManualMode(false); setTimeoutError(false); }}
+                onClick={() => { setManualMode("off"); setTimeoutError(false); }}
                 className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancelar

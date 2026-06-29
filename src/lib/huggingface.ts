@@ -37,7 +37,7 @@ export async function analyzeMealImage(
     `https://api-inference.huggingface.co/models/${HF_MODEL_IMAGE}`,
     {
       inputs: {
-        image: base64Image,
+        image: `data:image/jpeg;base64,${base64Image}`,
         prompt:
           "USER: <image>\nAnalyze this food image. Identify each food item, estimate portions in grams, and return ONLY a valid JSON object (no markdown, no extra text) with keys: total_calories (number), protein_g (number), carbs_g (number), fat_g (number).\nASSISTANT:",
       },
