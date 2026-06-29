@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IMeal {
+  _id: mongoose.Types.ObjectId;
   items: string;
   calories: number;
   protein: number;

@@ -32,7 +32,7 @@ export async function PUT(
     return NextResponse.json({ error: "Nenhum registro hoje" }, { status: 404 });
   }
 
-  const meal = record.meals.id(params.mealId);
+  const meal = record.meals.find((m) => m._id.toString() === params.mealId);
   if (!meal) {
     return NextResponse.json({ error: "Refeição não encontrada" }, { status: 404 });
   }
@@ -82,14 +82,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Nenhum registro hoje" }, { status: 404 });
   }
 
-  const meal = record.meals.id(params.mealId);
-  if (!meal) {
-    return NextResponse.json({ error: "Refeição não encontrada" }, { status: 404 });
+  await MealRecord.updateOne(
+    { clerkId: userId, date: today },
+    { $pull: { meals: { _id: params.mealId } } }
+  );
+
+  const updated = await MealRecord.findOne({ clerkId: userId, date: today });
+  if (!updated) {
+    return NextResponse.json({ error: "Nenhum registro hoje" }, { status: 404 });
   }
 
-  meal.deleteOne();
-
-  const totals = record.meals.reduce(
+  const totals = updated.meals.reduce(
     (acc, m) => ({
       caloriesConsumed: acc.caloriesConsumed + m.calories,
       protein: acc.protein + m.protein,
@@ -99,8 +102,8 @@ export async function DELETE(
     { caloriesConsumed: 0, protein: 0, carbs: 0, fat: 0 }
   );
 
-  record.dailySummary = { ...totals, goalCalories: user.goalCalories };
-  await record.save();
+  updated.dailySummary = { ...totals, goalCalories: user.goalCalories };
+  await updated.save();
 
   return NextResponse.json({ dailySummary: record.dailySummary });
 }
