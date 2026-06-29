@@ -34,26 +34,32 @@ export async function POST(req: NextRequest) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const record = await MealRecord.findOneAndUpdate(
-    { clerkId: userId, date: today },
-    {
-      $push: {
-        meals: {
-          items: nutrition.description,
-          calories: nutrition.total_calories,
-          protein: nutrition.protein_g,
-          carbs: nutrition.carbs_g,
-          fat: nutrition.fat_g,
-          timestamp: new Date(),
-        },
-      },
-      $setOnInsert: {
-        clerkId: userId,
-        date: today,
-      },
-    },
-    { upsert: true, new: true }
-  );
+  let record = await MealRecord.findOne({ clerkId: userId, date: today });
+  if (!record) {
+    record = new MealRecord({
+      clerkId: userId,
+      date: today,
+      meals: [],
+      dailySummary: { caloriesConsumed: 0, goalCalories: user.goalCalories, protein: 0, carbs: 0, fat: 0 },
+    });
+  }
+
+  record.meals.push({
+    items: nutrition.description,
+    ingredients: nutrition.ingredients.map((ing) => ({
+      name: ing.name,
+      quantity: ing.quantity,
+      calories: ing.calories,
+      protein: ing.protein_g,
+      carbs: ing.carbs_g,
+      fat: ing.fat_g,
+    })),
+    calories: nutrition.total_calories,
+    protein: nutrition.protein_g,
+    carbs: nutrition.carbs_g,
+    fat: nutrition.fat_g,
+    timestamp: new Date(),
+  });
 
   const totals = record.meals.reduce(
     (acc, m) => ({
@@ -73,10 +79,7 @@ export async function POST(req: NextRequest) {
   await record.save();
 
   return NextResponse.json({
-    meal: {
-      items: nutrition.description,
-      ...nutrition,
-    },
+    meal: record.meals[record.meals.length - 1],
     dailySummary: record.dailySummary,
   });
 }

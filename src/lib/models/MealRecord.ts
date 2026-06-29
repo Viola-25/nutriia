@@ -1,8 +1,19 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export interface IIngredient {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  quantity: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 export interface IMeal {
   _id: mongoose.Types.ObjectId;
   items: string;
+  ingredients: IIngredient[];
   calories: number;
   protein: number;
   carbs: number;
@@ -27,8 +38,18 @@ export interface IMealRecord extends Document {
   updatedAt: Date;
 }
 
+const IngredientSchema = new Schema<IIngredient>({
+  name: { type: String, required: true },
+  quantity: { type: String, required: true },
+  calories: { type: Number, required: true },
+  protein: { type: Number, required: true },
+  carbs: { type: Number, required: true },
+  fat: { type: Number, required: true },
+});
+
 const MealSchema = new Schema<IMeal>({
   items: { type: String, required: true },
+  ingredients: [IngredientSchema],
   calories: { type: Number, required: true },
   protein: { type: Number, required: true },
   carbs: { type: Number, required: true },

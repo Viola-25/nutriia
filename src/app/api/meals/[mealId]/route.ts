@@ -20,7 +20,8 @@ export async function PUT(
     return NextResponse.json({ error: "Perfil não encontrado" }, { status: 404 });
   }
 
-  const { items, calories, protein, carbs, fat } = await req.json();
+  const body = await req.json();
+  const { items, calories, protein, carbs, fat, ingredients } = body;
   if (!items) {
     return NextResponse.json({ error: "Descrição obrigatória" }, { status: 400 });
   }
@@ -42,6 +43,17 @@ export async function PUT(
   meal.protein = Number(protein) || 0;
   meal.carbs = Number(carbs) || 0;
   meal.fat = Number(fat) || 0;
+
+  if (Array.isArray(ingredients)) {
+    meal.ingredients = ingredients.map((ing: any) => ({
+      name: ing.name,
+      quantity: ing.quantity,
+      calories: Number(ing.calories) || 0,
+      protein: Number(ing.protein) || 0,
+      carbs: Number(ing.carbs) || 0,
+      fat: Number(ing.fat) || 0,
+    }));
+  }
 
   const totals = record.meals.reduce(
     (acc, m) => ({

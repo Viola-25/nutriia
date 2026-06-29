@@ -16,9 +16,20 @@ interface UserProfile {
   goalCalories: number;
 }
 
+interface IIngredient {
+  _id: string;
+  name: string;
+  quantity: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 interface Meal {
   _id: string;
   items: string;
+  ingredients: IIngredient[];
   calories: number;
   protein: number;
   carbs: number;
@@ -43,50 +54,151 @@ interface MealRecord {
 
 type EntryTab = "photo" | "text";
 
-function MealCard({
-  meal,
-  onEdit,
+function EditableIngredientRow({
+  ingredient,
+  onSave,
   onDelete,
 }: {
-  meal: Meal;
-  onEdit: (meal: Meal) => void;
-  onDelete: (mealId: string) => void;
+  ingredient: IIngredient;
+  onSave: (id: string, name: string, quantity: string) => void;
+  onDelete: (id: string) => void;
 }) {
-  return (
-    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm transition-all hover:shadow-md">
-      <div className="mb-2 flex items-start justify-between">
-        <p className="font-medium text-gray-900">{meal.items}</p>
-        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-          {meal.calories} kcal
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(ingredient.name);
+  const [quantity, setQuantity] = useState(ingredient.quantity);
+
+  return editing ? (
+    <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-2">
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
+      />
+      <input
+        type="text"
+        value={quantity}
+        onChange={(e) => setQuantity(e.target.value)}
+        className="w-20 rounded border border-gray-300 px-2 py-1 text-xs outline-none focus:border-emerald-500"
+      />
+      <button
+        onClick={() => { onSave(ingredient._id, name, quantity); setEditing(false); }}
+        className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700"
+      >
+        Salvar
+      </button>
+      <button
+        onClick={() => setEditing(false)}
+        className="rounded px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+      >
+        Cancelar
+      </button>
+    </div>
+  ) : (
+    <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-1.5">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="font-medium text-gray-900">{ingredient.name}</span>
+        <span className="text-gray-400">{ingredient.quantity}</span>
+        <span className="text-xs text-gray-500">
+          {ingredient.calories} kcal · P: {ingredient.protein}g · C: {ingredient.carbs}g · G: {ingredient.fat}g
         </span>
       </div>
-      <div className="flex items-center justify-between">
-        <div className="flex gap-4 text-xs text-gray-500">
-          <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">
-            P: {meal.protein}g
-          </span>
-          <span className="rounded bg-orange-50 px-2 py-1 text-orange-700">
-            C: {meal.carbs}g
-          </span>
-          <span className="rounded bg-red-50 px-2 py-1 text-red-700">
-            G: {meal.fat}g
+      <div className="flex gap-1">
+        <button
+          onClick={() => setEditing(true)}
+          className="rounded px-1.5 py-0.5 text-xs text-gray-500 hover:text-gray-700"
+        >
+          Editar
+        </button>
+        <button
+          onClick={() => onDelete(ingredient._id)}
+          className="rounded px-1.5 py-0.5 text-xs text-red-500 hover:text-red-700"
+        >
+          Remover
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MealCard({
+  meal,
+  onDelete,
+  onRecalculate,
+  onAddIngredient,
+  onDeleteIngredient,
+  recalculating,
+}: {
+  meal: Meal;
+  onDelete: (mealId: string) => void;
+  onRecalculate: (mealId: string, ingredients: { name: string; quantity: string }[]) => void;
+  onAddIngredient: (mealId: string) => void;
+  onDeleteIngredient: (mealId: string, ingredientId: string) => void;
+  recalculating: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-white shadow-sm transition-all hover:shadow-md">
+      <div className="p-4">
+        <div className="mb-2 flex items-start justify-between">
+          <p className="font-medium text-gray-900">{meal.items}</p>
+          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+            {meal.calories} kcal
           </span>
         </div>
-        <div className="flex gap-1">
-          <button
-            onClick={() => onEdit(meal)}
-            className="rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-          >
-            Editar
-          </button>
-          <button
-            onClick={() => onDelete(meal._id)}
-            className="rounded px-2 py-1 text-xs text-red-500 transition-colors hover:bg-red-50 hover:text-red-700"
-          >
-            Excluir
-          </button>
+        <div className="flex items-center justify-between">
+          <div className="flex gap-4 text-xs text-gray-500">
+            <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">P: {meal.protein}g</span>
+            <span className="rounded bg-orange-50 px-2 py-1 text-orange-700">C: {meal.carbs}g</span>
+            <span className="rounded bg-red-50 px-2 py-1 text-red-700">G: {meal.fat}g</span>
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="rounded px-2 py-1 text-xs text-emerald-600 transition-colors hover:bg-emerald-50"
+            >
+              {expanded ? "Ocultar ingredientes" : `${meal.ingredients?.length || 0} ingredientes`}
+            </button>
+            <button
+              onClick={() => onDelete(meal._id)}
+              className="rounded px-2 py-1 text-xs text-red-500 transition-colors hover:bg-red-50"
+            >
+              Excluir
+            </button>
+          </div>
         </div>
       </div>
+
+      {expanded && (
+        <div className="animate-fade-in border-t border-gray-100 p-4 pt-3">
+          <div className="space-y-1.5">
+            {(meal.ingredients || []).map((ing) => (
+              <EditableIngredientRow
+                key={ing._id}
+                ingredient={ing}
+                onSave={(id, name, quantity) => {
+                  const updated = meal.ingredients.map((i) =>
+                    i._id === id ? { ...i, name, quantity } : i
+                  );
+                  onRecalculate(
+                    meal._id,
+                    updated.map((i) => ({ name: i.name, quantity: i.quantity }))
+                  );
+                }}
+                onDelete={(id) => onDeleteIngredient(meal._id, id)}
+              />
+            ))}
+          </div>
+          <button
+            onClick={() => onAddIngredient(meal._id)}
+            disabled={recalculating}
+            className="mt-2 w-full rounded-lg border border-dashed border-gray-300 px-3 py-2 text-xs text-gray-500 transition-colors hover:border-emerald-400 hover:text-emerald-600"
+          >
+            + Adicionar ingrediente
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -190,6 +302,9 @@ export default function Dashboard() {
     carbs: "",
     fat: "",
   });
+  const [recalculating, setRecalculating] = useState<string | null>(null);
+  const [addIngredientFor, setAddIngredientFor] = useState<string | null>(null);
+  const [newIngredient, setNewIngredient] = useState({ name: "", quantity: "" });
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -405,6 +520,62 @@ export default function Dashboard() {
     } finally {
       setDeleting(null);
     }
+  }
+
+  async function handleRecalculate(mealId: string, ingredients: { name: string; quantity: string }[]) {
+    setRecalculating(mealId);
+    try {
+      const res = await axios.post("/api/recalculate-meal", { ingredients });
+      const { result } = res.data;
+      await axios.put(`/api/meals/${mealId}`, {
+        items: result.description,
+        ingredients: result.ingredients.map((ing: any) => ({
+          name: ing.name,
+          quantity: ing.quantity,
+          calories: ing.calories,
+          protein: ing.protein_g,
+          carbs: ing.carbs_g,
+          fat: ing.fat_g,
+        })),
+        calories: result.total_calories,
+        protein: result.protein_g,
+        carbs: result.carbs_g,
+        fat: result.fat_g,
+      });
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRecalculating(null);
+    }
+  }
+
+  async function handleAddIngredient(mealId: string) {
+    setAddIngredientFor(mealId);
+  }
+
+  async function handleSaveNewIngredient(mealId: string) {
+    if (!newIngredient.name.trim() || !newIngredient.quantity.trim()) return;
+    const meal = todayRecord?.meals.find((m) => m._id === mealId);
+    if (!meal) return;
+    const updatedIngredients = [
+      ...(meal.ingredients || []).map((i) => ({ name: i.name, quantity: i.quantity })),
+      { name: newIngredient.name.trim(), quantity: newIngredient.quantity.trim() },
+    ];
+    setAddIngredientFor(null);
+    setNewIngredient({ name: "", quantity: "" });
+    await handleRecalculate(mealId, updatedIngredients);
+  }
+
+  async function handleDeleteIngredient(mealId: string, ingredientId: string) {
+    const meal = todayRecord?.meals.find((m) => m._id === mealId);
+    if (!meal) return;
+    const remaining = (meal.ingredients || []).filter((i) => i._id !== ingredientId);
+    if (remaining.length === 0) return;
+    await handleRecalculate(
+      mealId,
+      remaining.map((i) => ({ name: i.name, quantity: i.quantity }))
+    );
   }
 
   if (!isLoaded || !loaded) {
@@ -717,12 +888,61 @@ export default function Dashboard() {
               <MealCard
                 key={meal._id || idx}
                 meal={meal}
-                onEdit={startEdit}
                 onDelete={deleteMeal}
+                onRecalculate={handleRecalculate}
+                onAddIngredient={handleAddIngredient}
+                onDeleteIngredient={handleDeleteIngredient}
+                recalculating={recalculating === meal._id}
               />
             ))}
           </div>
         </section>
+      )}
+
+      {addIngredientFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm animate-fade-in rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Adicionar Ingrediente</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Nome</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Ex: Frango grelhado"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={newIngredient.name}
+                  onChange={(e) => setNewIngredient({ ...newIngredient, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Quantidade</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 200g"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={newIngredient.quantity}
+                  onChange={(e) => setNewIngredient({ ...newIngredient, quantity: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => handleSaveNewIngredient(addIngredientFor)}
+                  disabled={!newIngredient.name.trim() || !newIngredient.quantity.trim()}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Adicionar e Recalcular
+                </button>
+                <button
+                  onClick={() => { setAddIngredientFor(null); setNewIngredient({ name: "", quantity: "" }); }}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {editingMeal && (
