@@ -66,6 +66,21 @@ function MealCard({ meal }: { meal: Meal }) {
   );
 }
 
+function Skeleton() {
+  return (
+    <div className="animate-pulse space-y-3 rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
+      <div className="h-4 w-3/4 rounded bg-gray-200" />
+      <div className="h-3 w-1/2 rounded bg-gray-200" />
+      <div className="flex gap-4">
+        <div className="h-8 w-full rounded bg-gray-200" />
+        <div className="h-8 w-full rounded bg-gray-200" />
+        <div className="h-8 w-full rounded bg-gray-200" />
+        <div className="h-8 w-full rounded bg-gray-200" />
+      </div>
+    </div>
+  );
+}
+
 function ProgressBar({
   current,
   goal,
@@ -110,6 +125,21 @@ const MACRO_PLACEHOLDERS = {
   fat: "Ex: 18",
 };
 
+const LOADING_MESSAGES: Record<EntryTab, string[]> = {
+  photo: [
+    "Otimizando a imagem...",
+    "Enviando para o modelo de visão...",
+    "Calculando macronutrientes...",
+    "Interpretando os dados...",
+  ],
+  text: [
+    "Interpretando sua descrição...",
+    "Analisando ingredientes...",
+    "Calculando macronutrientes...",
+    "Montando resultado...",
+  ],
+};
+
 export default function Dashboard() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
@@ -133,6 +163,20 @@ export default function Dashboard() {
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const [loadingIndex, setLoadingIndex] = useState(0);
+
+  useEffect(() => {
+    if (!analyzing) {
+      setLoadingIndex(0);
+      return;
+    }
+    const messages = LOADING_MESSAGES[entryTab];
+    const interval = setInterval(() => {
+      setLoadingIndex((prev) => (prev + 1) % messages.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [analyzing, entryTab]);
 
   const fetchData = useCallback(async () => {
     const today = new Date();
@@ -481,25 +525,25 @@ export default function Dashboard() {
               onChange={handleImageCapture}
               className="hidden"
             />
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={analyzing}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-gray-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50"
-            >
-              {analyzing ? (
-                <>
+            {analyzing ? (
+              <div className="animate-fade-in space-y-4">
+                <div className="flex items-center gap-3 text-sm font-medium text-emerald-700">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
-                  Analisando imagem...
-                </>
-              ) : (
-                <>
-                  <span className="text-2xl">📸</span>
-                  <span className="font-medium">
-                    Clique para capturar ou enviar foto
-                  </span>
-                </>
-              )}
-            </button>
+                  {LOADING_MESSAGES.photo[loadingIndex]}
+                </div>
+                <Skeleton />
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-gray-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50"
+              >
+                <span className="text-2xl">📸</span>
+                <span className="font-medium">
+                  Clique para capturar ou enviar foto
+                </span>
+              </button>
+            )}
             {preview && (
               <img
                 src={preview}
@@ -517,20 +561,23 @@ export default function Dashboard() {
               rows={3}
               className="w-full resize-none rounded-lg border border-gray-300 p-3 text-sm outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
-            <button
-              type="submit"
-              disabled={analyzing || !textInput.trim()}
-              className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {analyzing ? (
-                <span className="inline-flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Analisando...
-                </span>
-              ) : (
-                "Analisar Refeição"
-              )}
-            </button>
+            {analyzing ? (
+              <div className="animate-fade-in space-y-4">
+                <div className="flex items-center gap-3 text-sm font-medium text-emerald-700">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
+                  {LOADING_MESSAGES.text[loadingIndex]}
+                </div>
+                <Skeleton />
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={!textInput.trim()}
+                className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Analisar Refeição
+              </button>
+            )}
           </form>
         )}
       </div>
