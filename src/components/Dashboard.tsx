@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { compressImage } from "@/lib/image";
 
 interface UserProfile {
   age: number;
@@ -172,21 +173,17 @@ export default function Dashboard() {
     if (!file) return;
     setAnalyzing(true);
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      setPreview(reader.result as string);
-      try {
-        await axios.post("/api/analyze-meal", { image: base64 });
-        await fetchData();
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setAnalyzing(false);
-        setPreview(null);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const base64 = await compressImage(file);
+      setPreview(`data:image/jpeg;base64,${base64}`);
+      await axios.post("/api/analyze-meal", { image: base64 });
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAnalyzing(false);
+      setPreview(null);
+    }
   }
 
   async function handleTextSubmit(e: React.FormEvent) {
