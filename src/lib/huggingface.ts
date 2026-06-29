@@ -1,4 +1,5 @@
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
+const HF_API_BASE = "https://router.huggingface.co/hf-inference";
 const HF_MODEL_IMAGE = "Salesforce/blip-image-captioning-base";
 const HF_MODEL_TEXT = "mistralai/Mistral-7B-Instruct-v0.3";
 
@@ -28,51 +29,20 @@ function parseNutritionResponse(text: string): NutritionResult {
   }
 }
 
-async function resolveIP(hostname: string): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://dns.google/resolve?name=${hostname}&type=A`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    const data: any = await res.json();
-    const ip = data.Answer?.find((a: any) => a.type === 1)?.data;
-    if (ip) return ip;
-  } catch {
-    // fallback to system DNS
-  }
-
-  try {
-    const { Resolver } = await import("node:dns");
-    const resolver = new Resolver();
-    resolver.setServers(["8.8.8.8", "1.1.1.1"]);
-    return new Promise((resolve) => {
-      resolver.resolve4(hostname, (err, addresses) => {
-        if (err) resolve(null);
-        else resolve(addresses[0]);
-      });
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function hfRequest(model: string, payload: unknown, timeoutMs = 55000) {
+async function hfRequest(url: string, payload: unknown, timeoutMs = 55000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(
-      `https://api-inference.huggingface.co/models/${model}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${HF_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      }
-    );
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${HF_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => "Unknown error");
@@ -80,65 +50,9 @@ async function hfRequest(model: string, payload: unknown, timeoutMs = 55000) {
     }
 
     return await res.json();
-  } catch (err: any) {
-    if (err?.cause?.code === "ENOTFOUND") {
-      console.warn("DNS ENOTFOUND, trying IP bypass...");
-      return hfRequestBypass(model, payload, timeoutMs);
-    }
-    throw err;
   } finally {
     clearTimeout(timer);
   }
-}
-
-async function hfRequestBypass(model: string, payload: unknown, timeoutMs = 55000) {
-  const hostname = "api-inference.huggingface.co";
-  const ip = await resolveIP(hostname);
-  if (!ip) throw new Error("Could not resolve HF API IP");
-
-  const https = await import("node:https");
-  const url = new URL(`https://${hostname}/models/${model}`);
-
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify(payload);
-    const req = https.request(
-      {
-        hostname: ip,
-        port: 443,
-        path: url.pathname + url.search,
-        method: "POST",
-        headers: {
-          Host: hostname,
-          Authorization: `Bearer ${HF_API_TOKEN}`,
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-        },
-        servername: hostname,
-        rejectUnauthorized: true,
-        timeout: timeoutMs,
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          if (!res.statusCode || res.statusCode >= 400) {
-            reject(new Error(`HF API ${res.statusCode}: ${data}`));
-          } else {
-            try {
-              resolve(JSON.parse(data));
-            } catch {
-              resolve(data);
-            }
-          }
-        });
-      }
-    );
-
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("HF API timeout")); });
-    req.write(body);
-    req.end();
-  });
 }
 
 export async function analyzeMealImage(
@@ -147,9 +61,10 @@ export async function analyzeMealImage(
   let caption = "";
 
   try {
-    const data: any = await hfRequest(HF_MODEL_IMAGE, {
-      inputs: base64Image,
-    });
+    const data: any = await hfRequest(
+      `${HF_API_BASE}/models/${HF_MODEL_IMAGE}`,
+      { inputs: base64Image }
+    );
     caption =
       data?.[0]?.generated_text ??
       (typeof data === "string" ? data : "");
@@ -162,7 +77,7 @@ export async function analyzeMealImage(
     : "Estimate a typical balanced meal's nutritional content.";
 
   const data: any = await hfRequest(
-    HF_MODEL_TEXT,
+    `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
     {
       inputs: `<s>[INST] ${description}
 
@@ -187,7 +102,7 @@ export async function analyzeMealText(
   description: string
 ): Promise<NutritionResult> {
   const data: any = await hfRequest(
-    HF_MODEL_TEXT,
+    `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
     {
       inputs: `<s>[INST] Given this meal description: "${description}"
 
