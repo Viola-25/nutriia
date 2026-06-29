@@ -1,7 +1,3 @@
-import dns from "node:dns";
-
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
 const HF_MODEL_IMAGE = "Salesforce/blip-image-captioning-base";
 const HF_MODEL_TEXT = "mistralai/Mistral-7B-Instruct-v0.3";
@@ -32,6 +28,22 @@ function parseNutritionResponse(text: string): NutritionResult {
   }
 }
 
+async function resolveIP(hostname: string): Promise<string | null> {
+  try {
+    const { Resolver } = await import("node:dns");
+    const resolver = new Resolver();
+    resolver.setServers(["8.8.8.8", "1.1.1.1"]);
+    return new Promise((resolve) => {
+      resolver.resolve4(hostname, (err, addresses) => {
+        if (err) resolve(null);
+        else resolve(addresses[0]);
+      });
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function hfRequest(model: string, payload: unknown, timeoutMs = 55000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -56,9 +68,65 @@ async function hfRequest(model: string, payload: unknown, timeoutMs = 55000) {
     }
 
     return await res.json();
+  } catch (err: any) {
+    if (err?.cause?.code === "ENOTFOUND") {
+      console.warn("DNS ENOTFOUND, trying IP bypass...");
+      return hfRequestBypass(model, payload, timeoutMs);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function hfRequestBypass(model: string, payload: unknown, timeoutMs = 55000) {
+  const hostname = "api-inference.huggingface.co";
+  const ip = await resolveIP(hostname);
+  if (!ip) throw new Error("Could not resolve HF API IP");
+
+  const https = await import("node:https");
+  const url = new URL(`https://${hostname}/models/${model}`);
+
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const req = https.request(
+      {
+        hostname: ip,
+        port: 443,
+        path: url.pathname + url.search,
+        method: "POST",
+        headers: {
+          Host: hostname,
+          Authorization: `Bearer ${HF_API_TOKEN}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        servername: hostname,
+        rejectUnauthorized: true,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (!res.statusCode || res.statusCode >= 400) {
+            reject(new Error(`HF API ${res.statusCode}: ${data}`));
+          } else {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              resolve(data);
+            }
+          }
+        });
+      }
+    );
+
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("HF API timeout")); });
+    req.write(body);
+    req.end();
+  });
 }
 
 export async function analyzeMealImage(
