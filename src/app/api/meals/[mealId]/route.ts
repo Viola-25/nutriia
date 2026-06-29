@@ -33,7 +33,7 @@ export async function PUT(
     return NextResponse.json({ error: "Nenhum registro hoje" }, { status: 404 });
   }
 
-  const meal = record.meals.find((m) => m._id.toString() === params.mealId);
+  const meal = record.meals.find((m) => m._id?.toString() === params.mealId);
   if (!meal) {
     return NextResponse.json({ error: "Refeição não encontrada" }, { status: 404 });
   }
