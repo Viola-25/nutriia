@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     {
       $push: {
         meals: {
-          items: "Refeição analisada por IA",
+          items: nutrition.description,
           calories: nutrition.total_calories,
           protein: nutrition.protein_g,
           carbs: nutrition.carbs_g,
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     meal: {
-      items: "Refeição analisada por IA",
+      items: nutrition.description,
       ...nutrition,
     },
     dailySummary: record.dailySummary,

@@ -17,6 +17,7 @@ interface UserProfile {
 }
 
 interface Meal {
+  _id: string;
   items: string;
   calories: number;
   protein: number;
@@ -42,7 +43,15 @@ interface MealRecord {
 
 type EntryTab = "photo" | "text";
 
-function MealCard({ meal }: { meal: Meal }) {
+function MealCard({
+  meal,
+  onEdit,
+  onDelete,
+}: {
+  meal: Meal;
+  onEdit: (meal: Meal) => void;
+  onDelete: (mealId: string) => void;
+}) {
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm transition-all hover:shadow-md">
       <div className="mb-2 flex items-start justify-between">
@@ -51,16 +60,32 @@ function MealCard({ meal }: { meal: Meal }) {
           {meal.calories} kcal
         </span>
       </div>
-      <div className="flex gap-4 text-xs text-gray-500">
-        <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">
-          P: {meal.protein}g
-        </span>
-        <span className="rounded bg-orange-50 px-2 py-1 text-orange-700">
-          C: {meal.carbs}g
-        </span>
-        <span className="rounded bg-red-50 px-2 py-1 text-red-700">
-          G: {meal.fat}g
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex gap-4 text-xs text-gray-500">
+          <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">
+            P: {meal.protein}g
+          </span>
+          <span className="rounded bg-orange-50 px-2 py-1 text-orange-700">
+            C: {meal.carbs}g
+          </span>
+          <span className="rounded bg-red-50 px-2 py-1 text-red-700">
+            G: {meal.fat}g
+          </span>
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={() => onEdit(meal)}
+            className="rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => onDelete(meal._id)}
+            className="rounded px-2 py-1 text-xs text-red-500 transition-colors hover:bg-red-50 hover:text-red-700"
+          >
+            Excluir
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -155,6 +180,9 @@ export default function Dashboard() {
   const [timeoutError, setTimeoutError] = useState(false);
   const [manualMode, setManualMode] = useState<"off" | "ai" | "full">("off");
   const [manualText, setManualText] = useState("");
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const [editForm, setEditForm] = useState({ items: "", calories: "", protein: "", carbs: "", fat: "" });
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [manualForm, setManualForm] = useState({
     items: "",
     calories: "",
@@ -334,6 +362,48 @@ export default function Dashboard() {
       console.error(err);
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  function startEdit(meal: Meal) {
+    setEditingMeal(meal);
+    setEditForm({
+      items: meal.items,
+      calories: String(meal.calories),
+      protein: String(meal.protein),
+      carbs: String(meal.carbs),
+      fat: String(meal.fat),
+    });
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingMeal || !editForm.items.trim()) return;
+    try {
+      await axios.put(`/api/meals/${editingMeal._id}`, {
+        items: editForm.items.trim(),
+        calories: Number(editForm.calories) || 0,
+        protein: Number(editForm.protein) || 0,
+        carbs: Number(editForm.carbs) || 0,
+        fat: Number(editForm.fat) || 0,
+      });
+      setEditingMeal(null);
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function deleteMeal(mealId: string) {
+    if (!confirm("Excluir esta refeição?")) return;
+    setDeleting(mealId);
+    try {
+      await axios.delete(`/api/meals/${mealId}`);
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -644,10 +714,61 @@ export default function Dashboard() {
           </h2>
           <div className="space-y-3">
             {todayRecord.meals.map((meal, idx) => (
-              <MealCard key={idx} meal={meal} />
+              <MealCard
+                key={meal._id || idx}
+                meal={meal}
+                onEdit={startEdit}
+                onDelete={deleteMeal}
+              />
             ))}
           </div>
         </section>
+      )}
+
+      {editingMeal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form onSubmit={saveEdit} className="w-full max-w-md animate-fade-in rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Editar Refeição</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Descrição</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={editForm.items}
+                  onChange={(e) => setEditForm({ ...editForm, items: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Calorias</label>
+                  <input type="number" required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" value={editForm.calories} onChange={(e) => setEditForm({ ...editForm, calories: e.target.value })} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Proteínas (g)</label>
+                  <input type="number" required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" value={editForm.protein} onChange={(e) => setEditForm({ ...editForm, protein: e.target.value })} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Carboidratos (g)</label>
+                  <input type="number" required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" value={editForm.carbs} onChange={(e) => setEditForm({ ...editForm, carbs: e.target.value })} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Gorduras (g)</label>
+                  <input type="number" required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" value={editForm.fat} onChange={(e) => setEditForm({ ...editForm, fat: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                  Salvar
+                </button>
+                <button type="button" onClick={() => setEditingMeal(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       )}
 
       {weekRecords.length > 0 && (

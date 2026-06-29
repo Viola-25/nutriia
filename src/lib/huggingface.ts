@@ -8,24 +8,31 @@ export interface NutritionResult {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  description: string;
 }
 
-function parseNutritionResponse(text: string): NutritionResult {
+function parseNutritionResponse(text: string, fallbackDesc = ""): NutritionResult {
+  const result: NutritionResult = {
+    total_calories: 450,
+    protein_g: 25,
+    carbs_g: 50,
+    fat_g: 15,
+    description: fallbackDesc || "Refeição analisada por IA",
+  };
+
   const jsonMatch = text.match(/\{[\s\S]*?\}/);
-  if (!jsonMatch) {
-    return getFallbackNutrition();
-  }
+  if (!jsonMatch) return result;
 
   try {
     const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      total_calories: parsed.total_calories ?? parsed.calories ?? 0,
-      protein_g: parsed.protein_g ?? parsed.protein ?? 0,
-      carbs_g: parsed.carbs_g ?? parsed.carbs ?? parsed.carbohydrates ?? 0,
-      fat_g: parsed.fat_g ?? parsed.fat ?? 0,
-    };
+    result.total_calories = parsed.total_calories ?? parsed.calories ?? 450;
+    result.protein_g = parsed.protein_g ?? parsed.protein ?? 25;
+    result.carbs_g = parsed.carbs_g ?? parsed.carbs ?? parsed.carbohydrates ?? 50;
+    result.fat_g = parsed.fat_g ?? parsed.fat ?? 15;
+    result.description = parsed.description || result.description;
+    return result;
   } catch {
-    return getFallbackNutrition();
+    return result;
   }
 }
 
@@ -66,81 +73,80 @@ export async function analyzeMealImage(
       { inputs: base64Image }
     );
 
-    if (Array.isArray(data) && data.length > 0 && data[0]?.label) {
-      foodLabel = data[0].label;
-    } else if (data?.label) {
-      foodLabel = data.label;
+    if (Array.isArray(data) && data.length > 0) {
+      foodLabel = data[0]?.label || data[0]?.name || "";
     }
   } catch (err) {
     console.error("Food classification failed:", err);
   }
 
   const description = foodLabel
-    ? `The meal contains: ${foodLabel}. Estimate the nutritional content of this meal.`
-    : "Estimate a typical balanced meal's nutritional content.";
+    ? `The photo shows: ${foodLabel}. Describe the meal components (in Portuguese), estimate portion sizes in grams, and return nutrition totals.`
+    : "Describe this meal's components in Portuguese, estimate portion sizes in grams, and return nutrition totals.";
+
+  const prompt = `<s>[INST] ${description}
+
+Return ONLY a valid JSON object (no markdown, no extra text) with these keys:
+- description (string, in Portuguese, describing what food items are present, e.g. "Prato com arroz, feijão, bife grelhado e salada")
+- total_calories (number)
+- protein_g (number)
+- carbs_g (number)
+- fat_g (number)
+
+Use realistic Brazilian portion sizes. [/INST]`;
 
   try {
     const data: any = await hfRequest(
       `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
       {
-        inputs: `<s>[INST] ${description}
-
-Return ONLY a valid JSON object (no markdown, no extra text) with keys: total_calories (number), protein_g (number), carbs_g (number), fat_g (number). Use realistic portion sizes. [/INST]`,
-        parameters: {
-          max_new_tokens: 200,
-          temperature: 0.1,
-          return_full_text: false,
-        },
+        inputs: prompt,
+        parameters: { max_new_tokens: 300, temperature: 0.1, return_full_text: false },
       },
       30000
     );
 
-    const text =
-      data?.[0]?.generated_text ??
-      (typeof data === "string" ? data : "");
-
-    return parseNutritionResponse(text);
+    const text = data?.[0]?.generated_text ?? (typeof data === "string" ? data : "");
+    return parseNutritionResponse(text, foodLabel || "Refeição analisada por IA");
   } catch (err) {
     console.error("Mistral analysis failed:", err);
-    return getFallbackNutrition();
+    return {
+      total_calories: 450,
+      protein_g: 25,
+      carbs_g: 50,
+      fat_g: 15,
+      description: foodLabel || "Refeição analisada por IA",
+    };
   }
 }
 
 export async function analyzeMealText(
   description: string
 ): Promise<NutritionResult> {
+  const prompt = `<s>[INST] Given this meal description in Portuguese: "${description}"
+
+Return ONLY a valid JSON object (no markdown, no extra text) with these keys:
+- description (string, in Portuguese, briefly listing the items, e.g. "Ovos mexidos, aveia com leite, banana")
+- total_calories (number)
+- protein_g (number)
+- carbs_g (number)
+- fat_g (number)
+
+Use realistic Brazilian portion sizes. [/INST]`;
+
   try {
     const data: any = await hfRequest(
       `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
       {
-        inputs: `<s>[INST] Given this meal description: "${description}"
-
-Estimate the nutritional content. Return ONLY a valid JSON object (no markdown, no extra text, no explanation) with these exact keys: total_calories (number), protein_g (number), carbs_g (number), fat_g (number). Use realistic portion sizes. [/INST]`,
-        parameters: {
-          max_new_tokens: 200,
-          temperature: 0.1,
-          return_full_text: false,
-        },
+        inputs: prompt,
+        parameters: { max_new_tokens: 300, temperature: 0.1, return_full_text: false },
       },
       30000
     );
 
-    const text =
-      data?.[0]?.generated_text ??
-      (typeof data === "string" ? data : "");
-
-    return parseNutritionResponse(text);
+    const text = data?.[0]?.generated_text ?? (typeof data === "string" ? data : "");
+    return parseNutritionResponse(text, description);
   } catch (err) {
     console.error("analyzeMealText error:", err);
     throw err;
   }
-}
-
-function getFallbackNutrition(): NutritionResult {
-  return {
-    total_calories: 450,
-    protein_g: 28,
-    carbs_g: 50,
-    fat_g: 15,
-  };
 }

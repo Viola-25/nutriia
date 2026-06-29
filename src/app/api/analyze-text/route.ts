@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     {
       $push: {
         meals: {
-          items: description,
+          items: nutrition.description,
           calories: nutrition.total_calories,
           protein: nutrition.protein_g,
           carbs: nutrition.carbs_g,
