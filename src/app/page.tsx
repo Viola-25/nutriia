@@ -1,30 +1,6 @@
-"use client";
-
-import { useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import Link from "next/link";
 
 export default function HomePage() {
-  const { isLoaded, isSignedIn } = useUser();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      router.push("/dashboard");
-    }
-  }, [isLoaded, isSignedIn, router]);
-
-  if (!isLoaded) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Carregando...</p>
-      </div>
-    );
-  }
-
-  if (isSignedIn) return null;
-
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 p-8 text-center">
       <h1 className="text-5xl font-bold tracking-tight">
