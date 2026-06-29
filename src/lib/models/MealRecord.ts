@@ -11,7 +11,7 @@ export interface IIngredient {
 }
 
 export interface IMeal {
-  _id: mongoose.Types.ObjectId;
+  _id?: mongoose.Types.ObjectId;
   items: string;
   ingredients: IIngredient[];
   calories: number;
