@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("analyzeMealImage error:", msg);
-    return NextResponse.json({ error: `Falha na análise da imagem: ${msg}` }, { status: 500 });
+    return NextResponse.json({ error: "IA temporariamente indisponível. Use a opção de texto." }, { status: 503 });
   }
 
   const today = new Date().toISOString().split("T")[0];
