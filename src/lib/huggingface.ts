@@ -50,11 +50,22 @@ function parseNutritionResponse(text: string, fallbackDesc = ""): NutritionResul
       result.ingredients = parsed.ingredients.map((ing: any) => ({
         name: ing.name || "",
         quantity: ing.quantity || "",
-        calories: ing.calories ?? ing.calories ?? 0,
+        calories: ing.calories ?? 0,
         protein_g: ing.protein_g ?? ing.protein ?? 0,
         carbs_g: ing.carbs_g ?? ing.carbs ?? 0,
         fat_g: ing.fat_g ?? ing.fat ?? 0,
       })).filter((ing: AIIngredient) => ing.name);
+    }
+
+    if (result.ingredients.length === 0) {
+      result.ingredients = [{
+        name: result.description,
+        quantity: "1 porção",
+        calories: result.total_calories,
+        protein_g: result.protein_g,
+        carbs_g: result.carbs_g,
+        fat_g: result.fat_g,
+      }];
     }
 
     return result;
@@ -128,7 +139,7 @@ Break down the meal into individual ingredients with Brazilian portion sizes. [/
       `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
       {
         inputs: prompt,
-        parameters: { max_new_tokens: 500, temperature: 0.1, return_full_text: false },
+        parameters: { max_new_tokens: 700, temperature: 0.1, return_full_text: false },
       },
       30000
     );
@@ -163,7 +174,7 @@ Use realistic Brazilian portion sizes. Do NOT change the names or quantities, on
       `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
       {
         inputs: prompt,
-        parameters: { max_new_tokens: 500, temperature: 0.1, return_full_text: false },
+        parameters: { max_new_tokens: 700, temperature: 0.1, return_full_text: false },
       },
       30000
     );
@@ -196,7 +207,7 @@ Break down the meal into individual ingredients with Brazilian portion sizes. [/
       `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
       {
         inputs: prompt,
-        parameters: { max_new_tokens: 500, temperature: 0.1, return_full_text: false },
+        parameters: { max_new_tokens: 700, temperature: 0.1, return_full_text: false },
       },
       30000
     );
