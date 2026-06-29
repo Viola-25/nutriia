@@ -1,5 +1,3 @@
-import axios from "axios";
-
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
 const HF_MODEL_IMAGE = "Salesforce/blip-image-captioning-base";
 const HF_MODEL_TEXT = "mistralai/Mistral-7B-Instruct-v0.3";
@@ -31,17 +29,32 @@ function parseNutritionResponse(text: string): NutritionResult {
 }
 
 async function hfRequest(model: string, payload: unknown, timeoutMs = 55000) {
-  return axios.post(
-    `https://api-inference.huggingface.co/models/${model}`,
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${HF_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      timeout: timeoutMs,
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(
+      `https://api-inference.huggingface.co/models/${model}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${HF_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }
+    );
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "Unknown error");
+      throw new Error(`HF API ${res.status}: ${errorText}`);
     }
-  );
+
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function analyzeMealImage(
@@ -50,12 +63,12 @@ export async function analyzeMealImage(
   let caption = "";
 
   try {
-    const blipRes = await hfRequest(HF_MODEL_IMAGE, {
+    const data: any = await hfRequest(HF_MODEL_IMAGE, {
       inputs: base64Image,
     });
     caption =
-      blipRes.data?.[0]?.generated_text ??
-      (typeof blipRes.data === "string" ? blipRes.data : "");
+      data?.[0]?.generated_text ??
+      (typeof data === "string" ? data : "");
   } catch (err) {
     console.error("BLIP caption failed:", err);
   }
@@ -64,7 +77,7 @@ export async function analyzeMealImage(
     ? `Image shows: ${caption}. Estimate the nutritional content of this meal.`
     : "Estimate a typical balanced meal's nutritional content.";
 
-  const mistralRes = await hfRequest(
+  const data: any = await hfRequest(
     HF_MODEL_TEXT,
     {
       inputs: `<s>[INST] ${description}
@@ -80,8 +93,8 @@ Return ONLY a valid JSON object (no markdown, no extra text) with keys: total_ca
   );
 
   const text =
-    mistralRes.data?.[0]?.generated_text ??
-    (typeof mistralRes.data === "string" ? mistralRes.data : "");
+    data?.[0]?.generated_text ??
+    (typeof data === "string" ? data : "");
 
   return parseNutritionResponse(text);
 }
@@ -89,8 +102,8 @@ Return ONLY a valid JSON object (no markdown, no extra text) with keys: total_ca
 export async function analyzeMealText(
   description: string
 ): Promise<NutritionResult> {
-  const response = await axios.post(
-    `https://api-inference.huggingface.co/models/${HF_MODEL_TEXT}`,
+  const data: any = await hfRequest(
+    HF_MODEL_TEXT,
     {
       inputs: `<s>[INST] Given this meal description: "${description}"
 
@@ -101,18 +114,12 @@ Estimate the nutritional content. Return ONLY a valid JSON object (no markdown, 
         return_full_text: false,
       },
     },
-    {
-      headers: {
-        Authorization: `Bearer ${HF_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 30000,
-    }
+    30000
   );
 
   const text =
-    response.data?.[0]?.generated_text ??
-    (typeof response.data === "string" ? response.data : "");
+    data?.[0]?.generated_text ??
+    (typeof data === "string" ? data : "");
 
   return parseNutritionResponse(text);
 }
