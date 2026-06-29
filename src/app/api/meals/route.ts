@@ -15,7 +15,10 @@ export async function GET(req: NextRequest) {
   const startDate = searchParams.get("start");
   const endDate = searchParams.get("end");
 
-  const filter: Record<string, unknown> = { clerkId: userId };
+  const filter: { clerkId: string; date?: { $gte?: string; $lte?: string } } = {
+    clerkId: userId,
+  };
+
   if (startDate || endDate) {
     filter.date = {};
     if (startDate) filter.date.$gte = startDate;
