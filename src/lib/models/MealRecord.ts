@@ -48,7 +48,7 @@ const DailySummarySchema = new Schema<IDailySummary>(
 
 const MealRecordSchema = new Schema<IMealRecord>(
   {
-    clerkId: { type: String, required: true, index: true },
+    clerkId: { type: String, required: true },
     date: { type: String, required: true },
     meals: [MealSchema],
     dailySummary: { type: DailySummarySchema, default: () => ({}) },
