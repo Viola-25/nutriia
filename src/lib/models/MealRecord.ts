@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IIngredient {
-  _id: mongoose.Types.ObjectId;
+  _id?: mongoose.Types.ObjectId;
   name: string;
   quantity: string;
   calories: number;
