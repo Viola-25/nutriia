@@ -30,6 +30,18 @@ function parseNutritionResponse(text: string): NutritionResult {
 
 async function resolveIP(hostname: string): Promise<string | null> {
   try {
+    const res = await fetch(
+      `https://dns.google/resolve?name=${hostname}&type=A`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    const data: any = await res.json();
+    const ip = data.Answer?.find((a: any) => a.type === 1)?.data;
+    if (ip) return ip;
+  } catch {
+    // fallback to system DNS
+  }
+
+  try {
     const { Resolver } = await import("node:dns");
     const resolver = new Resolver();
     resolver.setServers(["8.8.8.8", "1.1.1.1"]);
