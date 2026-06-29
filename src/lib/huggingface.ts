@@ -1,3 +1,7 @@
+import dns from "node:dns";
+
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
 const HF_MODEL_IMAGE = "Salesforce/blip-image-captioning-base";
 const HF_MODEL_TEXT = "mistralai/Mistral-7B-Instruct-v0.3";
