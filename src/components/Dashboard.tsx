@@ -101,6 +101,15 @@ function ProgressBar({
   );
 }
 
+const AI_TIMEOUT = 15000;
+
+const MACRO_PLACEHOLDERS = {
+  calorie: "Ex: 450",
+  protein: "Ex: 28",
+  carbs: "Ex: 35",
+  fat: "Ex: 18",
+};
+
 export default function Dashboard() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
@@ -113,7 +122,17 @@ export default function Dashboard() {
   const [textInput, setTextInput] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [timeoutError, setTimeoutError] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    items: "",
+    calories: "",
+    protein: "",
+    carbs: "",
+    fat: "",
+  });
   const fileRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
     const today = new Date();
@@ -168,18 +187,43 @@ export default function Dashboard() {
     }
   }
 
+  function cancelRequest() {
+    abortRef.current?.abort();
+  }
+
+  async function postWithTimeout<T>(url: string, data: unknown): Promise<T> {
+    cancelRequest();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+    try {
+      const res = await axios.post<T>(url, data, { signal: controller.signal });
+      return res.data;
+    } finally {
+      clearTimeout(timer);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }
+
   async function handleImageCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setAnalyzing(true);
+    setTimeoutError(false);
+    setManualMode(false);
+    setPreview(null);
 
     try {
       const base64 = await compressImage(file);
       setPreview(`data:image/jpeg;base64,${base64}`);
-      await axios.post("/api/analyze-meal", { image: base64 });
+      await postWithTimeout("/api/analyze-meal", { image: base64 });
       await fetchData();
-    } catch (err) {
-      console.error(err);
+    } catch (err: unknown) {
+      if (axios.isCancel(err) || (err instanceof DOMException && err.name === "AbortError")) {
+        setTimeoutError(true);
+      } else {
+        setTimeoutError(true);
+      }
     } finally {
       setAnalyzing(false);
       setPreview(null);
@@ -190,9 +234,38 @@ export default function Dashboard() {
     e.preventDefault();
     if (!textInput.trim()) return;
     setAnalyzing(true);
+    setTimeoutError(false);
+    setManualMode(false);
     try {
-      await axios.post("/api/analyze-text", { description: textInput.trim() });
+      await postWithTimeout("/api/analyze-text", { description: textInput.trim() });
       setTextInput("");
+      await fetchData();
+    } catch (err: unknown) {
+      if (axios.isCancel(err) || (err instanceof DOMException && err.name === "AbortError")) {
+        setTimeoutError(true);
+      } else {
+        setTimeoutError(true);
+      }
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handleManualSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!manualForm.items.trim()) return;
+    setAnalyzing(true);
+    try {
+      await axios.post("/api/analyze-manual", {
+        items: manualForm.items.trim(),
+        calories: Number(manualForm.calories) || 0,
+        protein: Number(manualForm.protein) || 0,
+        carbs: Number(manualForm.carbs) || 0,
+        fat: Number(manualForm.fat) || 0,
+      });
+      setManualForm({ items: "", calories: "", protein: "", carbs: "", fat: "" });
+      setManualMode(false);
+      setTimeoutError(false);
       await fetchData();
     } catch (err) {
       console.error(err);
@@ -272,7 +345,7 @@ export default function Dashboard() {
         <div className="border-b border-gray-100">
           <div className="flex">
             <button
-              onClick={() => setEntryTab("photo")}
+              onClick={() => { setEntryTab("photo"); setTimeoutError(false); setManualMode(false); }}
               className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
                 entryTab === "photo"
                   ? "border-b-2 border-emerald-500 text-emerald-700"
@@ -282,7 +355,7 @@ export default function Dashboard() {
               📷 Foto
             </button>
             <button
-              onClick={() => setEntryTab("text")}
+              onClick={() => { setEntryTab("text"); setTimeoutError(false); setManualMode(false); }}
               className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
                 entryTab === "text"
                   ? "border-b-2 border-emerald-500 text-emerald-700"
@@ -293,70 +366,173 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        <div className="p-4">
-          {entryTab === "photo" ? (
-            <div className="space-y-3">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleImageCapture}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={analyzing}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-gray-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50"
-              >
-                {analyzing ? (
-                  <>
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
-                    Analisando imagem...
-                  </>
-                ) : (
-                  <>
-                    <span className="text-2xl">📸</span>
-                    <span className="font-medium">
-                      Clique para capturar ou enviar foto
-                    </span>
-                  </>
-                )}
-              </button>
-              {preview && (
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="mx-auto max-h-48 rounded-lg object-cover shadow-sm"
-                />
-              )}
+
+        {timeoutError && (
+          <div className="mx-4 mt-4 animate-fade-in rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">⏰</span>
+              <div className="flex-1">
+                <p className="font-medium text-amber-800">A IA demorou muito para responder</p>
+                <p className="mt-1 text-sm text-amber-700">
+                  Você pode tentar novamente ou inserir os dados manualmente.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => { setTimeoutError(false); setManualMode(true); }}
+                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+                  >
+                    Inserir Manualmente
+                  </button>
+                  <button
+                    onClick={() => { setTimeoutError(false); fileRef.current?.click(); }}
+                    className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100"
+                  >
+                    Tentar de Novo
+                  </button>
+                </div>
+              </div>
             </div>
-          ) : (
-            <form onSubmit={handleTextSubmit} className="space-y-3">
-              <textarea
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Ex: 2 ovos mexidos, 40g de aveia com leite, 1 banana"
-                rows={3}
-                className="w-full resize-none rounded-lg border border-gray-300 p-3 text-sm outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+          </div>
+        )}
+
+        {manualMode ? (
+          <form onSubmit={handleManualSubmit} className="animate-fade-in space-y-4 p-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Descrição da Refeição</label>
+              <input
+                type="text"
+                required
+                placeholder="Ex: Ovos mexidos (200g), Aveia (50g)"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                value={manualForm.items}
+                onChange={(e) => setManualForm({ ...manualForm, items: e.target.value })}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Calorias</label>
+                <input
+                  type="number"
+                  required
+                  placeholder={MACRO_PLACEHOLDERS.calorie}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={manualForm.calories}
+                  onChange={(e) => setManualForm({ ...manualForm, calories: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Proteínas (g)</label>
+                <input
+                  type="number"
+                  required
+                  placeholder={MACRO_PLACEHOLDERS.protein}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={manualForm.protein}
+                  onChange={(e) => setManualForm({ ...manualForm, protein: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Carboidratos (g)</label>
+                <input
+                  type="number"
+                  required
+                  placeholder={MACRO_PLACEHOLDERS.carbs}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={manualForm.carbs}
+                  onChange={(e) => setManualForm({ ...manualForm, carbs: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Gorduras (g)</label>
+                <input
+                  type="number"
+                  required
+                  placeholder={MACRO_PLACEHOLDERS.fat}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  value={manualForm.fat}
+                  onChange={(e) => setManualForm({ ...manualForm, fat: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={analyzing || !textInput.trim()}
-                className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                disabled={analyzing || !manualForm.items.trim()}
+                className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
-                {analyzing ? (
-                  <span className="inline-flex items-center gap-2">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Analisando...
-                  </span>
-                ) : (
-                  "Analisar Refeição"
-                )}
+                {analyzing ? "Salvando..." : "Salvar Refeição"}
               </button>
-            </form>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={() => { setManualMode(false); setTimeoutError(false); }}
+                className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : entryTab === "photo" ? (
+          <div className="space-y-3 p-4">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleImageCapture}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={analyzing}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-gray-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50"
+            >
+              {analyzing ? (
+                <>
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
+                  Analisando imagem...
+                </>
+              ) : (
+                <>
+                  <span className="text-2xl">📸</span>
+                  <span className="font-medium">
+                    Clique para capturar ou enviar foto
+                  </span>
+                </>
+              )}
+            </button>
+            {preview && (
+              <img
+                src={preview}
+                alt="Preview"
+                className="mx-auto max-h-48 rounded-lg object-cover shadow-sm"
+              />
+            )}
+          </div>
+        ) : (
+          <form onSubmit={handleTextSubmit} className="space-y-3 p-4">
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Ex: 2 ovos mexidos, 40g de aveia com leite, 1 banana"
+              rows={3}
+              className="w-full resize-none rounded-lg border border-gray-300 p-3 text-sm outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            />
+            <button
+              type="submit"
+              disabled={analyzing || !textInput.trim()}
+              className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {analyzing ? (
+                <span className="inline-flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Analisando...
+                </span>
+              ) : (
+                "Analisar Refeição"
+              )}
+            </button>
+          </form>
+        )}
       </div>
 
       {todayRecord && todayRecord.meals.length > 0 && (
