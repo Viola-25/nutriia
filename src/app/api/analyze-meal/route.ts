@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import dbConnect from "@/lib/mongodb";
 import MealRecord from "@/lib/models/MealRecord";
 import User from "@/lib/models/User";
-import { analyzeMealImage } from "@/lib/huggingface";
+import { analyzeMealImage, type NutritionResult } from "@/lib/huggingface";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -23,7 +23,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Imagem não fornecida" }, { status: 400 });
   }
 
-  const nutrition = await analyzeMealImage(image);
+  let nutrition: NutritionResult;
+  try {
+    nutrition = await analyzeMealImage(image);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("analyzeMealImage error:", msg);
+    return NextResponse.json({ error: `Falha na análise da imagem: ${msg}` }, { status: 500 });
+  }
 
   const today = new Date().toISOString().split("T")[0];
 

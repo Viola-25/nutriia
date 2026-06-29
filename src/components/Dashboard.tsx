@@ -116,7 +116,7 @@ function ProgressBar({
   );
 }
 
-const AI_TIMEOUT = 25000;
+const AI_TIMEOUT = 50000;
 
 const MACRO_PLACEHOLDERS = {
   calorie: "Ex: 450",
@@ -264,6 +264,11 @@ export default function Dashboard() {
       await postWithTimeout("/api/analyze-meal", { image: base64 });
       await fetchData();
     } catch (err: unknown) {
+      if (axios.isCancel(err)) {
+        setTimeoutError(true);
+      } else if (axios.isAxiosError(err) && err.response?.data?.error) {
+        console.error("Erro da API:", err.response.data.error);
+      }
       setTimeoutError(true);
     } finally {
       setAnalyzing(false);

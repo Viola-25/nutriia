@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import dbConnect from "@/lib/mongodb";
 import MealRecord from "@/lib/models/MealRecord";
 import User from "@/lib/models/User";
-import { analyzeMealText } from "@/lib/huggingface";
+import { analyzeMealText, type NutritionResult } from "@/lib/huggingface";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -23,7 +23,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Descrição inválida" }, { status: 400 });
   }
 
-  const nutrition = await analyzeMealText(description);
+  let nutrition: NutritionResult;
+  try {
+    nutrition = await analyzeMealText(description);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("analyzeMealText error:", msg);
+    return NextResponse.json({ error: `Falha na análise do texto: ${msg}` }, { status: 500 });
+  }
 
   const today = new Date().toISOString().split("T")[0];
 

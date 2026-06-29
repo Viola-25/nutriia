@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
-const HF_MODEL_IMAGE = "llava-hf/llava-1.5-7b-hf";
+const HF_MODEL_IMAGE = "Salesforce/blip-image-captioning-base";
 const HF_MODEL_TEXT = "mistralai/Mistral-7B-Instruct-v0.3";
 
 export interface NutritionResult {
@@ -30,33 +30,59 @@ function parseNutritionResponse(text: string): NutritionResult {
   }
 }
 
-export async function analyzeMealImage(
-  base64Image: string
-): Promise<NutritionResult> {
-  const response = await axios.post(
-    `https://api-inference.huggingface.co/models/${HF_MODEL_IMAGE}`,
-    {
-      inputs: {
-        image: `data:image/jpeg;base64,${base64Image}`,
-        prompt:
-          "USER: <image>\nAnalyze this food image. Identify each food item, estimate portions in grams, and return ONLY a valid JSON object (no markdown, no extra text) with keys: total_calories (number), protein_g (number), carbs_g (number), fat_g (number).\nASSISTANT:",
-      },
-      parameters: {
-        max_new_tokens: 300,
-        temperature: 0.1,
-      },
-    },
+async function hfRequest(model: string, payload: unknown, timeoutMs = 55000) {
+  return axios.post(
+    `https://api-inference.huggingface.co/models/${model}`,
+    payload,
     {
       headers: {
         Authorization: `Bearer ${HF_API_TOKEN}`,
         "Content-Type": "application/json",
       },
-      timeout: 30000,
+      timeout: timeoutMs,
     }
+  );
+}
+
+export async function analyzeMealImage(
+  base64Image: string
+): Promise<NutritionResult> {
+  let caption = "";
+
+  try {
+    const blipRes = await hfRequest(HF_MODEL_IMAGE, {
+      inputs: base64Image,
+    });
+    caption =
+      blipRes.data?.[0]?.generated_text ??
+      (typeof blipRes.data === "string" ? blipRes.data : "");
+  } catch (err) {
+    console.error("BLIP caption failed:", err);
+  }
+
+  const description = caption
+    ? `Image shows: ${caption}. Estimate the nutritional content of this meal.`
+    : "Estimate a typical balanced meal's nutritional content.";
+
+  const mistralRes = await hfRequest(
+    HF_MODEL_TEXT,
+    {
+      inputs: `<s>[INST] ${description}
+
+Return ONLY a valid JSON object (no markdown, no extra text) with keys: total_calories (number), protein_g (number), carbs_g (number), fat_g (number). Use realistic portion sizes. [/INST]`,
+      parameters: {
+        max_new_tokens: 200,
+        temperature: 0.1,
+        return_full_text: false,
+      },
+    },
+    30000
   );
 
   const text =
-    response.data?.[0]?.generated_text ?? response.data?.generated_text ?? "";
+    mistralRes.data?.[0]?.generated_text ??
+    (typeof mistralRes.data === "string" ? mistralRes.data : "");
+
   return parseNutritionResponse(text);
 }
 
