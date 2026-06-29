@@ -118,28 +118,28 @@ export async function analyzeMealImage(
     console.error("Food classification failed:", err);
   }
 
-  const description = foodLabel
-    ? `The photo shows: ${foodLabel}. Describe the meal components (in Portuguese), estimate portion sizes in grams, and return nutrition totals.`
-    : "Describe this meal's components in Portuguese, estimate portion sizes in grams, and return nutrition totals.";
+  const mealHint = foodLabel
+    ? `A foto foi classificada como: "${foodLabel}". Com base no nome deste prato, imagine os ingredientes típicos que o compõem em uma refeição brasileira.`
+    : "Descreva os ingredientes típicos desta refeição com porções brasileiras realistas.";
 
-  const prompt = `<s>[INST] ${description}
+  const prompt = `<s>[INST] ${mealHint}
 
-Return ONLY a valid JSON object (no markdown, no extra text) with these keys:
-- description (string, in Portuguese, describing what food items are present, e.g. "Prato com arroz, feijão, bife grelhado e salada")
-- ingredients (array of objects, each with: name in Portuguese, quantity in grams/ml like "200g" or "1 unidade", calories, protein_g, carbs_g, fat_g)
+Com base no nome do prato, retorne APENAS um JSON válido (sem markdown, sem texto extra) com estas chaves:
+- description (string em português, ex: "Prato com arroz, feijão, bife grelhado e salada")
+- ingredients (array de objetos, cada um com: name em português, quantity como "200g" ou "1 unidade", calories, protein_g, carbs_g, fat_g)
 - total_calories (number)
 - protein_g (number)
 - carbs_g (number)
 - fat_g (number)
 
-Break down the meal into individual ingredients with Brazilian portion sizes. [/INST]`;
+IMPORTANTE: Sempre retorne pelo menos 2 ingredientes. Use porções brasileiras realistas. Exemplo para "strogonoff de frango": [{"name": "Arroz branco", "quantity": "200g", "calories": 260, "protein_g": 5.8, "carbs_g": 58, "fat_g": 0.5}, {"name": "Strogonoff de frango", "quantity": "250g", "calories": 380, "protein_g": 35, "carbs_g": 8, "fat_g": 22}, {"name": "Batata palha", "quantity": "20g", "calories": 100, "protein_g": 1, "carbs_g": 9, "fat_g": 7}] [/INST]`;
 
   try {
     const data: any = await hfRequest(
       `${HF_API_BASE}/models/${HF_MODEL_TEXT}`,
       {
         inputs: prompt,
-        parameters: { max_new_tokens: 700, temperature: 0.1, return_full_text: false },
+        parameters: { max_new_tokens: 700, temperature: 0.3, return_full_text: false },
       },
       30000
     );
